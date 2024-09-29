@@ -34,6 +34,9 @@ all answers will have the following fields
 
 then after those fields we will have our answer
 
+TODO:
+    Convert to recursive algorithm
+
 */
 PacketErrors parseAnswers(char* packet, int qSize, std::vector<Answer>& answers, int recvBytes) {
     if (recvBytes < sizeof(struct FixedDNSheader)) {
