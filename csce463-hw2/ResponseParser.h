@@ -1,6 +1,9 @@
 #pragma once
 #include "pch.h"
 #include <vector>
+#include <tuple>
+#include <algorithm>
+
 enum PacketErrors {
 	INVALID_REPLY_SMALLER,
 	INVALID_SECTION,
@@ -11,7 +14,7 @@ enum PacketErrors {
 	INVALID_RECORD_JUMP_TO_HEADER,
 	INVALID_RECORD_JUMP_LOOP,
 	INVALID_RECORD_RR_LEN_BEYOND,
-	NONE
+	OK
 };
 
 /*

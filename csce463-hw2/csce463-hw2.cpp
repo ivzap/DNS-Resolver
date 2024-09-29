@@ -27,7 +27,7 @@ int main(int argc, char argv[])
     remote.sin_addr.s_addr = inet_addr("8.8.8.8"); // server’s IP
     remote.sin_port = htons(53); // DNS port on server
 
-    const std::string host = "yahoo.com";//"www.iloveu.com";
+    const std::string host = "docs.github.com";//"www.iloveu.com";
 
     USHORT flags = htons(DNS_QUERY | DNS_RD | DNS_STDQUERY);
     struct FixedDNSheader fDnsHeader {htons(4), flags, htons(1), htons(0), htons(0), htons(0)};
@@ -64,8 +64,6 @@ int main(int argc, char argv[])
         std::cout << "RECVFROM: Winsock API ERROR: " << WSAGetLastError() << std::endl;
         return -1;
     }
-
-    
 
     if (respPacketSize < sizeof(struct FixedDNSheader)) {
         std::cout << "++\tinvalid reply: packet smaller than fixed DNS header" << std::endl;
