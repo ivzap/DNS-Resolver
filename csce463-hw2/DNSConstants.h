@@ -1,4 +1,7 @@
 #pragma once
+
+#define MAX_ATTEMPTS 3
+
 #define MAX_DNS_SIZE 512
 
 /* flags */
