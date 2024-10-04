@@ -32,4 +32,4 @@ then after those fields we will have our answer
 
 */
 bool isCorruptPacket(char * packet);
-PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& answers, int recvBytes);
+PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& answers, std::vector<struct Question>&, int recvBytes);

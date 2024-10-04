@@ -58,7 +58,8 @@ int main(int argc, char* argv[])
     // send the udp packet query and get response from dns server
     char respPacket[MAX_DNS_SIZE];
     size_t attempts = 0;
-    std::vector<struct Answer> answers; // will hold all the answers after the dns query
+    std::vector<Answer> answers; // will hold all the answers after the dns query
+    std::vector<Question> questions;
     PacketErrors packetError;
     int respPacketSize = 0;
     
@@ -70,7 +71,7 @@ int main(int argc, char* argv[])
     while (attempts++ < MAX_ATTEMPTS)
     {
         int totalPacketSize = sizeof(struct FixedDNSheader) + qSize + sizeof(struct QueryHeader);
-        printf("Attempt %d with %d bytes... ", attempts - 1, totalPacketSize);
+        printf("Attempt %d with %d bytes... ", (int)attempts - 1, totalPacketSize);
         // send request to the server
         if (sendto(sock, queryPacket, sizeof(queryPacket), 0, (struct sockaddr*)&remote, sizeof(remote)) == SOCKET_ERROR) {
             std::cout << "Winsock API ERROR: " << WSAGetLastError() << std::endl;
@@ -98,7 +99,7 @@ int main(int argc, char* argv[])
             }
             printf("response in %.0f ms with %d bytes\n", ((double)clock() - (double)start) / CLOCKS_PER_SEC * 1000.0, respPacketSize);
 
-            packetError = parseAnswers(respPacket, strlen(question.get()) + 1, answers, respPacketSize);
+            packetError = parseAnswers(respPacket, strlen(question.get()) + 1, answers, questions, respPacketSize);
             break;
         }
         else if (available == 0) {
@@ -127,7 +128,7 @@ int main(int argc, char* argv[])
     rFixedDNSheader->flags = ntohs(rFixedDNSheader->flags);
     rFixedDNSheader->ID = ntohs(rFixedDNSheader->ID);
 
-    printf("  TXID 0x%.4X flags 0x%X questions %d answers %d authority %d additional %d",
+    printf("   TXID 0x%.4X flags 0x%X questions %d answers %d authority %d additional %d\n",
         rFixedDNSheader->ID,
         rFixedDNSheader->flags,
         rFixedDNSheader->questions,
@@ -135,6 +136,24 @@ int main(int argc, char* argv[])
         rFixedDNSheader->authority,
         rFixedDNSheader->additional
     );
+    USHORT rCode = ntohl(rFixedDNSheader->flags) & 0x0000000F; // get only the RCode from the flag
+    if (rCode != 0) {
+        printf("failed with Rcode = %d\n", rCode);
+            return 0;
+    }
+
+    printf("   succeeded with Rcode = %d\n", rCode);
+
+    printf("   ------------ [questions] ----------\n");
+    for (struct Question q: questions) {
+        printf("       %s type %d class %d\n", q.name.c_str(), q.header.qType, q.header.qClass);
+    }
+
+    printf("------------[answers] ------------\n");
+    // TODO: add a dns record type to string function
+    for (struct Answer a : answers) {
+        //printf("       %s %s %", q.name.c_str(), q.header.qType, q.header.qClass);
+    }
 
 
 

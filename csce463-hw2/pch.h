@@ -11,5 +11,6 @@
 #include "FixedDNSHeader.h"
 #include "QueryHeader.h"
 #include "ResponseParser.h"
+#include "Question.h"
 #include <memory>
 

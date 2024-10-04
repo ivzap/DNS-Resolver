@@ -24,7 +24,6 @@ bool isCorruptPacket(char* packet, struct FixedDNSheader& oFixedHeader, char * o
     return false;
 }
 
-
 ParseResult parseAnswerHelper(int curPos, int packetSize, int depth, unsigned char *packet) {
     if (depth >= 1000) {
         return { "", PacketErrors::INVALID_RECORD_JUMP_LOOP, curPos };
@@ -70,7 +69,7 @@ ParseResult parseAnswerHelper(int curPos, int packetSize, int depth, unsigned ch
 
         }
         else if (size == 0) {
-            std::get<2>(result) = curPos-1;
+            std::get<2>(result) = curPos;
             return result;
         }
         else {
@@ -85,22 +84,42 @@ ParseResult parseAnswerHelper(int curPos, int packetSize, int depth, unsigned ch
         }
        
     }
-    std::get<2>(result) = curPos-1;
+    std::get<2>(result) = curPos;
     return result;
 
 }
 
-PacketErrors parseAnswers(char* packet, int qSize, std::vector<Answer>& answers, int recvBytes) {
+PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& answers, std::vector<struct Question>& questions, int recvBytes) {
     if (recvBytes < sizeof(struct FixedDNSheader)) {
         std::cout << "++\tinvalid reply: packet smaller than fixed DNS header" << std::endl;
         return PacketErrors::INVALID_REPLY_SMALLER;
     }
-
+    
+    // find where out last question ends
     const struct FixedDNSheader* rFixedDNSheader = reinterpret_cast<FixedDNSheader*>(packet);
+    int qCnt = ntohs(rFixedDNSheader->questions); // 
+
+    int answerStart = sizeof(struct FixedDNSheader);
+    while (answerStart < recvBytes && qCnt--) {
+        ParseResult result = parseAnswerHelper(answerStart, recvBytes, 0, (unsigned char*)packet);
+        
+        answerStart = std::get<2>(result); // should point to the current question header
+
+        struct QueryHeader* qHeader = (struct QueryHeader*)(packet + answerStart);
+
+        struct Question question;
+        question.name = std::get<0>(result);
+        question.header.qClass = ntohs(qHeader->qClass);
+        question.header.qType= ntohs(qHeader->qType);
+
+        questions.push_back(question);
+
+        answerStart += sizeof(struct QueryHeader);
+    }
 
     int ansCnt = 0;
     // case 1: compressed, pattern: [1 byte][1 bytes]
-    int answerStart = sizeof(struct FixedDNSheader) + qSize + sizeof(struct QueryHeader);
+    //int answerStart = sizeof(struct FixedDNSheader) + qSize + sizeof(struct QueryHeader);
     while (answerStart < recvBytes) {
         ParseResult result = parseAnswerHelper(answerStart, recvBytes, 0, (unsigned char*)packet);
 
@@ -132,6 +151,8 @@ PacketErrors parseAnswers(char* packet, int qSize, std::vector<Answer>& answers,
         ansCnt++;
     }
 
+   
+    
     if (ansCnt < ntohs(rFixedDNSheader->answers)) {
         return PacketErrors::INVALID_SECTION;
     }
