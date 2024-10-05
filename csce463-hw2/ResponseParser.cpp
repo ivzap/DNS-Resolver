@@ -55,7 +55,7 @@ ParseResult parseAnswerHelper(int curPos, int packetSize, int depth, unsigned ch
     }
     // we have reached the end of a word
     if (packet[curPos] == 0) {
-        return { "", PacketErrors::OK, curPos };
+        return { "", PacketErrors::OK, curPos + 1};
     }
 
     ParseResult result = { "", PacketErrors::OK, curPos };
@@ -184,8 +184,7 @@ PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& a
         answer.name = std::get<0>(result);
         memcpy(&answer.header, aHeader, sizeof(struct DNSanswerHdr));
         
-        
-        // parse the answer from the packet
+        // parse the record rData from the packet
         switch (aHeader->type) {
 
             case(DNS_A): {
@@ -209,7 +208,6 @@ PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& a
                 break;
             }
         }
-        
         
         answers.push_back(answer);
         answerStart += sizeof(struct DNSanswerHdr) + aHeader->len;

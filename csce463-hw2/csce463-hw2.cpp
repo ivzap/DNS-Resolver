@@ -41,6 +41,7 @@ int main(int argc, char* argv[])
     USHORT flags = htons(DNS_QUERY | DNS_RD | DNS_STDQUERY);
     struct FixedDNSheader fDnsHeader {htons(4), flags, htons(1), htons(0), htons(0), htons(0)};
 
+    // TODO: reverse the ip if PTR then append in-addr.arpa
     std::shared_ptr<char[]> question = HOSTtoQuestion(host);
 
     struct QueryHeader qHeader { 
@@ -166,8 +167,81 @@ int main(int argc, char* argv[])
                 break;
             }
         }
-        
-        
+    }
+
+    int i = 0;
+    for (; i < rFixedDNSheader->answers; i++) {
+        struct Answer& a = answers[i];
+        switch (a.header.type) {
+            case(DNS_A): {
+                int ipv4 = a.rData.get()[0] << 24 | a.rData.get()[1] << 16 | a.rData.get()[2] << 8 | a.rData.get()[3];
+                printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), DNSipv4ToString(ipv4).c_str(), a.header.ttl);
+                break;
+            }
+            case(DNS_CNAME): {
+                //ParseResult result = parseAnswerHelper(0, a.header.len, 0, a.rData.get());
+                printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
+                break;
+            }
+            case(DNS_PTR): {
+                printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
+                break;
+            }
+            case(DNS_NS): {
+                printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
+                break;
+            }
+        }
+    }
+
+    printf("  ------------ [authority] ------------\n");
+    for (; i - rFixedDNSheader->answers < rFixedDNSheader->authority; i++) {
+        struct Answer& a = answers[i];
+        switch (a.header.type) {
+            case(DNS_A): {
+                int ipv4 = a.rData.get()[0] << 24 | a.rData.get()[1] << 16 | a.rData.get()[2] << 8 | a.rData.get()[3];
+                printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), DNSipv4ToString(ipv4).c_str(), a.header.ttl);
+                break;
+            }
+            case(DNS_CNAME): {
+                //ParseResult result = parseAnswerHelper(0, a.header.len, 0, a.rData.get());
+                printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
+                break;
+            }
+            case(DNS_PTR): {
+                printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
+                break;
+            }
+            case(DNS_NS): {
+                printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
+                break;
+            }
+        }
+    }
+
+    printf("  ------------ [additional] ------------\n");
+    for (; i - (rFixedDNSheader->answers + rFixedDNSheader->authority) < rFixedDNSheader->additional; i++) {
+        struct Answer& a = answers[i];
+        switch (a.header.type) {
+        case(DNS_A): {
+            int ipv4 = a.rData.get()[0] << 24 | a.rData.get()[1] << 16 | a.rData.get()[2] << 8 | a.rData.get()[3];
+            printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), DNSipv4ToString(ipv4).c_str(), a.header.ttl);
+            break;
+        }
+        case(DNS_CNAME): {
+            //ParseResult result = parseAnswerHelper(0, a.header.len, 0, a.rData.get());
+            printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
+            break;
+        }
+        case(DNS_PTR): {
+            printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
+            break;
+        }
+        case(DNS_NS): {
+            printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
+            break;
+        }
+        }
     }
 
 
