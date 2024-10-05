@@ -1,5 +1,4 @@
 #pragma once
-#include "pch.h"
 #include <vector>
 #include <tuple>
 #include <algorithm>
@@ -31,5 +30,8 @@ all answers will have the following fields
 then after those fields we will have our answer
 
 */
+std::string DNSipv4ToString(int ipv4);
+std::string DNStypeToString(USHORT type);
 bool isCorruptPacket(char * packet);
+std::tuple<std::string, PacketErrors, int> parseAnswerHelper(int curPos, int packetSize, int depth, unsigned char* packet);
 PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& answers, std::vector<struct Question>&, int recvBytes);

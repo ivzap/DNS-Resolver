@@ -3,8 +3,10 @@
 
 
 #include "pch.h"
-
+#include "ResponseParser.h"
 #include <iostream>
+
+typedef std::tuple<std::string, PacketErrors, int> ParseResult;
 
 int main(int argc, char* argv[])
 {
@@ -128,7 +130,7 @@ int main(int argc, char* argv[])
     rFixedDNSheader->flags = ntohs(rFixedDNSheader->flags);
     rFixedDNSheader->ID = ntohs(rFixedDNSheader->ID);
 
-    printf("   TXID 0x%.4X flags 0x%X questions %d answers %d authority %d additional %d\n",
+    printf("  TXID 0x%.4X flags 0x%X questions %d answers %d authority %d additional %d\n",
         rFixedDNSheader->ID,
         rFixedDNSheader->flags,
         rFixedDNSheader->questions,
@@ -142,17 +144,30 @@ int main(int argc, char* argv[])
             return 0;
     }
 
-    printf("   succeeded with Rcode = %d\n", rCode);
+    printf("  succeeded with Rcode = %d\n", rCode);
 
-    printf("   ------------ [questions] ----------\n");
+    printf("  ------------ [questions] ----------\n");
     for (struct Question q: questions) {
         printf("       %s type %d class %d\n", q.name.c_str(), q.header.qType, q.header.qClass);
     }
 
-    printf("------------[answers] ------------\n");
+    printf("  ------------ [answers] ------------\n");
     // TODO: add a dns record type to string function
     for (struct Answer a : answers) {
-        //printf("       %s %s %", q.name.c_str(), q.header.qType, q.header.qClass);
+        switch (a.header.type) {
+            case(DNS_A): {
+                int ipv4 = a.rData.get()[0] << 24 | a.rData.get()[1] << 16 | a.rData.get()[2] << 8 | a.rData.get()[3];
+                printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), DNSipv4ToString(ipv4).c_str(), a.header.ttl);
+                break;
+            }
+            case(DNS_CNAME): {
+                //ParseResult result = parseAnswerHelper(0, a.header.len, 0, a.rData.get());
+                printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
+                break;
+            }
+        }
+        
+        
     }
 
 

@@ -2,8 +2,33 @@
 #include <iostream>
 #include <algorithm>
 #include <math.h>
+#include "ResponseParser.h"
 
 typedef std::tuple<std::string, PacketErrors, int> ParseResult;
+
+std::string DNSipv4ToString(int ipv4) {
+    std::string ipv4Str = std::to_string(ipv4 >> 24 & 0xFF) 
+        + "." + std::to_string(ipv4 >> 16 & 0xFF)
+        + "." + std::to_string(ipv4 >> 8 & 0xFF)
+        + "." + std::to_string(ipv4 & 0xFF);
+    return ipv4Str;
+}
+
+std::string DNStypeToString(USHORT type) {
+    switch (type) {
+        case(DNS_A):
+            return "A";
+        case(DNS_CNAME):
+            return "CNAME";
+        case(DNS_NS):
+            return "NS";
+        case(DNS_PTR):
+            return "PTR";
+        default:
+            return "";
+    }
+}
+
 // returns true if response packet is corrupt
 bool isCorruptPacket(char* packet, struct FixedDNSheader& oFixedHeader, char * oQuestion, struct QueryHeader& oQueryHeader) {
     struct FixedDNSheader* rFixedHeader = reinterpret_cast<FixedDNSheader*>(packet);
@@ -60,7 +85,21 @@ ParseResult parseAnswerHelper(int curPos, int packetSize, int depth, unsigned ch
                 return result; // propagate the error up the call stack
             }
             // append the jumped domain name found to result
-            std::get<0>(result) += std::get<0>(result).length() != 0 ? "." + std::get<0>(jumpResult): std::get<0>(jumpResult);
+            if (std::get<0>(result).length()) {
+                if (std::get<0>(jumpResult).length()) {
+                    std::string nameSoFar = std::get<0>(result);
+                    if (nameSoFar[nameSoFar.length() - 1] == '.') {
+                        std::get<0>(result) += std::get<0>(jumpResult);
+                    }
+                    else {
+                        std::get<0>(result) += "." + std::get<0>(jumpResult);
+                    }
+                }
+            }
+            else {
+                std::get<0>(result) += std::get<0>(jumpResult);
+            }
+
             std::get<2>(result) = curPos + 1; // jump to end of first jump (only for first node in rec tree)
 
             return result; // return back to the first jump
@@ -144,8 +183,34 @@ PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& a
 
         answer.name = std::get<0>(result);
         memcpy(&answer.header, aHeader, sizeof(struct DNSanswerHdr));
-        memcpy(&answer.ipv4, (unsigned char*)aHeader + sizeof(struct DNSanswerHdr), aHeader->len);
-        answer.ipv4 = ntohl(answer.ipv4);
+        
+        
+        // parse the answer from the packet
+        switch (aHeader->type) {
+
+            case(DNS_A): {
+                answer.rData.reset(new unsigned char[aHeader->len+1]);
+                memcpy(answer.rData.get(), packet + answerStart + sizeof(struct DNSanswerHdr), aHeader->len);
+                break;
+            } case(DNS_CNAME): {
+                ParseResult recordResult = parseAnswerHelper(answerStart + sizeof(struct DNSanswerHdr), recvBytes, 0, (unsigned char*)packet);
+                answer.rData.reset(new unsigned char[std::get<0>(recordResult).length()+1]);
+                memcpy(answer.rData.get(), std::get<0>(recordResult).c_str(), std::get<0>(recordResult).length()+1);
+                break;
+            } case (DNS_NS): {
+                ParseResult recordResult = parseAnswerHelper(answerStart + sizeof(struct DNSanswerHdr), recvBytes, 0, (unsigned char*)packet);
+                answer.rData.reset(new unsigned char[std::get<0>(recordResult).length()+1]);
+                memcpy(answer.rData.get(), std::get<0>(recordResult).c_str(), std::get<0>(recordResult).length()+1);
+                break;
+            } case (DNS_PTR): {
+                ParseResult recordResult = parseAnswerHelper(answerStart + sizeof(struct DNSanswerHdr), recvBytes, 0, (unsigned char*)packet);
+                answer.rData.reset(new unsigned char[std::get<0>(recordResult).length()+1]);
+                memcpy(answer.rData.get(), std::get<0>(recordResult).c_str(), std::get<0>(recordResult).length()+1);
+                break;
+            }
+        }
+        
+        
         answers.push_back(answer);
         answerStart += sizeof(struct DNSanswerHdr) + aHeader->len;
         ansCnt++;
