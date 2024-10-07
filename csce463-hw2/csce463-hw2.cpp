@@ -1,10 +1,26 @@
 // csce463-hw2.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
-
+/*
+* random0: jump into fixed dns header
+* random1: invalid section, not enough records
+* random3: packet smaller than fixed DNS header
+* random4: truncated name, RR value length stretches beyond packet, truncated RR answer header, packet smaller than fixed DNS header, not enough records
+* random5: jump beyond packet boundry
+* random6: jump loop
+* random7: invalid section, not enough records
+* 
+Notes: random4.irl produces:
+1. packet smaller than dns header
+2. invalid section
+3. trunc name
+4. stretches beyond
+5. truncated RR answer header 
+*/
 #include "pch.h"
 #include "ResponseParser.h"
 #include <iostream>
+
 
 typedef std::tuple<std::string, PacketErrors, int> ParseResult;
 
@@ -37,9 +53,10 @@ int main(int argc, char* argv[])
 
     int ipv4 = inet_addr(argv[1]);
     std::string host = argv[1];//"www.iloveu.com";
-
+    std::string originalHost = host;
     USHORT flags = htons(DNS_QUERY | DNS_RD | DNS_STDQUERY);
-    struct FixedDNSheader fDnsHeader {htons(4), flags, htons(1), htons(0), htons(0), htons(0)};
+    int sentId = 4;
+    struct FixedDNSheader fDnsHeader {htons(sentId), flags, htons(1), htons(0), htons(0), htons(0)};
 
     // reverse the bytes and append in-addr.arpa for ptr query
     if (ipv4 != INADDR_NONE) {
@@ -47,7 +64,7 @@ int main(int argc, char* argv[])
         std::vector<std::string> bytes;
         for (int i = 0; i < host.length(); i++) {
             std::string byte;
-            while (i < host.length() && byte[i] != '.') {
+            while (i < host.length() && host[i] != '.') {
                 byte += host[i];
                 i++;
             }
@@ -86,7 +103,7 @@ int main(int argc, char* argv[])
     PacketErrors packetError;
     int respPacketSize = 0;
     
-    printf("Lookup:\t: %s\n", host.c_str());
+    printf("Lookup:\t: %s\n", originalHost.c_str());
     printf("Query:\t: %s, type %d, TXID 0x%.4X\n", host.c_str(), ntohs(qHeader.qType), 9999);
     printf("Server:\t: %s\n", argv[2]);
     printf("********************************\n");
@@ -137,9 +154,12 @@ int main(int argc, char* argv[])
         // error checking here
     }
 
-    if (respPacketSize < sizeof(struct FixedDNSheader)) {
-        std::cout << "++\tinvalid reply: packet smaller than fixed DNS header" << std::endl;
-        return false;
+    if (attempts > MAX_ATTEMPTS) {
+        return 0;
+    }
+
+    if (!displayPacketError(packetError)) {
+        return 0;
     }
 
     //Show information on only CNAME, A, NS, and PTR record...
@@ -159,9 +179,15 @@ int main(int argc, char* argv[])
         rFixedDNSheader->authority,
         rFixedDNSheader->additional
     );
-    USHORT rCode = ntohl(rFixedDNSheader->flags) & 0x0000000F; // get only the RCode from the flag
+
+    if (sentId != rFixedDNSheader->ID) {
+        printf("  ++ invalid reply: TXID mismatch, sent %X, received %X\n", sentId, rFixedDNSheader->ID);
+        return 0;
+    }
+
+    USHORT rCode = rFixedDNSheader->flags & (USHORT)0x000F; // get only the RCode from the flag
     if (rCode != 0) {
-        printf("failed with Rcode = %d\n", rCode);
+        printf("  failed with Rcode = %d\n", rCode);
             return 0;
     }
 
@@ -175,7 +201,7 @@ int main(int argc, char* argv[])
     int i = 0;
     if (rFixedDNSheader->answers) {
         printf("  ------------ [answers] ------------\n");
-        for (; i < rFixedDNSheader->answers; i++) {
+        for (; i < rFixedDNSheader->answers && i < answers.size(); i++) {
             struct Answer& a = answers[i];
             switch (a.header.type) {
                 case(DNS_A): {
@@ -202,7 +228,7 @@ int main(int argc, char* argv[])
 
     if (rFixedDNSheader->authority) {
         printf("  ------------ [authority] ------------\n");
-        for (; i - rFixedDNSheader->answers < rFixedDNSheader->authority; i++) {
+        for (; i - rFixedDNSheader->answers < rFixedDNSheader->authority && i < answers.size(); i++) {
             struct Answer& a = answers[i];
             switch (a.header.type) {
                 case(DNS_A): {
@@ -229,7 +255,7 @@ int main(int argc, char* argv[])
 
     if (rFixedDNSheader->additional) {
         printf("  ------------ [additional] ------------\n");
-        for (; i - (rFixedDNSheader->answers + rFixedDNSheader->authority) < rFixedDNSheader->additional; i++) {
+        for (; i - (rFixedDNSheader->answers + rFixedDNSheader->authority) < rFixedDNSheader->additional && i < answers.size(); i++) {
             struct Answer& a = answers[i];
             switch (a.header.type) {
                 case(DNS_A): {

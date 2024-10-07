@@ -30,6 +30,7 @@ all answers will have the following fields
 then after those fields we will have our answer
 
 */
+bool displayPacketError(PacketErrors error);
 std::string DNSipv4ToString(int ipv4);
 std::string DNStypeToString(USHORT type);
 bool isCorruptPacket(char * packet);

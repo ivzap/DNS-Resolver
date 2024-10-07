@@ -6,6 +6,40 @@
 
 typedef std::tuple<std::string, PacketErrors, int> ParseResult;
 
+bool displayPacketError(PacketErrors error) {
+    switch (error) {
+        case INVALID_REPLY_SMALLER:
+            std::cout << "  ++ invalid reply: packet smaller than fixed DNS header" << std::endl;
+            return false;
+        case INVALID_SECTION:
+            std::cout << "  ++ invalid section: not enough records" << std::endl;
+            return false;
+        case INVALID_RECORD_JUMP_BEYOND:
+            std::cout << "  ++ invalid record: jump beyond packet boundary" << std::endl;
+            return false;
+        case INVALID_RECORD_TRUNC_NAME:
+            std::cout << "  ++ invalid record: truncated name" << std::endl;
+            return false;
+        case INVALID_RECORD_TRUNC_RR:
+            std::cout << "  ++ invalid record: truncated RR answer header" << std::endl;
+            return false;
+        case INVALID_RECORD_TRUNC_JUMP:
+            std::cout << "  ++ invalid record: truncated jump offset" << std::endl;
+            return false;
+        case INVALID_RECORD_JUMP_TO_HEADER:
+            std::cout << "  ++ invalid record: jump into fixed DNS header" << std::endl;
+            return false;
+        case INVALID_RECORD_JUMP_LOOP:
+            std::cout << "  ++ invalid record: jump loop" << std::endl;
+            return false;
+        case INVALID_RECORD_RR_LEN_BEYOND:
+            std::cout << "  ++ invalid record: RR value length stretches the answer beyond packet" << std::endl;
+            return false;
+        default:
+            return true; // No errors detected
+    }
+}
+
 std::string DNSipv4ToString(int ipv4) {
     std::string ipv4Str = std::to_string(ipv4 >> 24 & 0xFF) 
         + "." + std::to_string(ipv4 >> 16 & 0xFF)
@@ -50,7 +84,7 @@ bool isCorruptPacket(char* packet, struct FixedDNSheader& oFixedHeader, char * o
 }
 
 ParseResult parseAnswerHelper(int curPos, int packetSize, int depth, unsigned char *packet) {
-    if (depth >= 1000) {
+    if (depth >= 500) {
         return { "", PacketErrors::INVALID_RECORD_JUMP_LOOP, curPos };
     }
     // we have reached the end of a word
@@ -69,7 +103,7 @@ ParseResult parseAnswerHelper(int curPos, int packetSize, int depth, unsigned ch
                 return { "", PacketErrors::INVALID_RECORD_TRUNC_JUMP, curPos};
             }
             offset += packet[curPos];
-            if (offset >= curPos) {
+            if (offset >= packetSize) {
                 return { "", PacketErrors::INVALID_RECORD_JUMP_BEYOND, curPos };
             }
             else if (offset < sizeof(struct FixedDNSheader)) {
@@ -130,7 +164,6 @@ ParseResult parseAnswerHelper(int curPos, int packetSize, int depth, unsigned ch
 
 PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& answers, std::vector<struct Question>& questions, int recvBytes) {
     if (recvBytes < sizeof(struct FixedDNSheader)) {
-        std::cout << "++\tinvalid reply: packet smaller than fixed DNS header" << std::endl;
         return PacketErrors::INVALID_REPLY_SMALLER;
     }
     
@@ -169,6 +202,11 @@ PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& a
 
         answerStart = std::get<2>(result);
 
+        if (answerStart + sizeof(DNSanswerHdr) > recvBytes) {
+            return PacketErrors::INVALID_RECORD_TRUNC_RR;
+            // hostname.com0123456789
+        }
+
         struct Answer answer;
 
         struct DNSanswerHdr* aHeader = reinterpret_cast<DNSanswerHdr*>(packet + answerStart);
@@ -193,16 +231,25 @@ PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& a
                 break;
             } case(DNS_CNAME): {
                 ParseResult recordResult = parseAnswerHelper(answerStart + sizeof(struct DNSanswerHdr), recvBytes, 0, (unsigned char*)packet);
+                if (std::get<1>(recordResult) != PacketErrors::OK) {
+                    return std::get<1>(recordResult);
+                }
                 answer.rData.reset(new unsigned char[std::get<0>(recordResult).length()+1]);
                 memcpy(answer.rData.get(), std::get<0>(recordResult).c_str(), std::get<0>(recordResult).length()+1);
                 break;
             } case (DNS_NS): {
                 ParseResult recordResult = parseAnswerHelper(answerStart + sizeof(struct DNSanswerHdr), recvBytes, 0, (unsigned char*)packet);
+                if (std::get<1>(recordResult) != PacketErrors::OK) {
+                    return std::get<1>(recordResult);
+                }
                 answer.rData.reset(new unsigned char[std::get<0>(recordResult).length()+1]);
                 memcpy(answer.rData.get(), std::get<0>(recordResult).c_str(), std::get<0>(recordResult).length()+1);
                 break;
             } case (DNS_PTR): {
                 ParseResult recordResult = parseAnswerHelper(answerStart + sizeof(struct DNSanswerHdr), recvBytes, 0, (unsigned char*)packet);
+                if (std::get<1>(recordResult) != PacketErrors::OK) {
+                    return std::get<1>(recordResult);
+                }
                 answer.rData.reset(new unsigned char[std::get<0>(recordResult).length()+1]);
                 memcpy(answer.rData.get(), std::get<0>(recordResult).c_str(), std::get<0>(recordResult).length()+1);
                 break;
@@ -216,7 +263,7 @@ PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& a
 
    
     
-    if (ansCnt < ntohs(rFixedDNSheader->answers)) {
+    if (ansCnt < ntohs(rFixedDNSheader->answers) + ntohs(rFixedDNSheader->additional) + ntohs(rFixedDNSheader->authority)) {
         return PacketErrors::INVALID_SECTION;
     }
 
