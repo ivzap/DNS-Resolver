@@ -26,7 +26,7 @@ typedef std::tuple<std::string, PacketErrors, int> ParseResult;
 
 int main(int argc, char* argv[])
 {
-    if (argc < 3) {
+    if (argc != 3) {
         std::cout << "Usage: [url/ip to resolve] [dns server ip]" << std::endl;
         return 0;
     }
@@ -103,9 +103,9 @@ int main(int argc, char* argv[])
     PacketErrors packetError;
     int respPacketSize = 0;
     
-    printf("Lookup:\t: %s\n", originalHost.c_str());
-    printf("Query:\t: %s, type %d, TXID 0x%.4X\n", host.c_str(), ntohs(qHeader.qType), 9999);
-    printf("Server:\t: %s\n", argv[2]);
+    printf("Lookup\t: %s\n", originalHost.c_str());
+    printf("Query\t: %s, type %d, TXID 0x%.4X\n", host.c_str(), ntohs(qHeader.qType), sentId);
+    printf("Server\t: %s\n", argv[2]);
     printf("********************************\n");
 
     while (attempts++ < MAX_ATTEMPTS)
@@ -134,8 +134,8 @@ int main(int argc, char* argv[])
             struct sockaddr_in response;
             int fromLen = sizeof(response);  // Initialize fromLen to the size of the sockaddr_in structure
             if ((respPacketSize = recvfrom(sock, respPacket, MAX_DNS_SIZE, 0, (struct sockaddr*)&response, &fromLen)) == SOCKET_ERROR) {
-                std::cout << "RECVFROM: Winsock API ERROR: " << WSAGetLastError() << std::endl;
-                return -1;
+                printf("socket error %d\n", WSAGetLastError());
+                return 0;
             }
             printf("response in %.0f ms with %d bytes\n", ((double)clock() - (double)start) / CLOCKS_PER_SEC * 1000.0, respPacketSize);
 
@@ -148,8 +148,8 @@ int main(int argc, char* argv[])
         }
         else {
             // some socket error happened
-            printf("Socket error %d occured. Exiting...", WSAGetLastError());
-            return -1;
+            printf("socket error %d\n", WSAGetLastError());
+            return 0;
         }
         // error checking here
     }
@@ -158,9 +158,7 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    if (!displayPacketError(packetError)) {
-        return 0;
-    }
+    
 
     //Show information on only CNAME, A, NS, and PTR record...
     struct FixedDNSheader* rFixedDNSheader = reinterpret_cast<FixedDNSheader*>(respPacket);
@@ -180,22 +178,27 @@ int main(int argc, char* argv[])
         rFixedDNSheader->additional
     );
 
+    USHORT rCode = rFixedDNSheader->flags & (USHORT)0x000F; // get only the RCode from the flag
+    if (rCode != 0) {
+        printf("  failed with Rcode = %d\n", rCode);
+        return 0;
+    }
+
     if (sentId != rFixedDNSheader->ID) {
         printf("  ++ invalid reply: TXID mismatch, sent %X, received %X\n", sentId, rFixedDNSheader->ID);
         return 0;
     }
 
-    USHORT rCode = rFixedDNSheader->flags & (USHORT)0x000F; // get only the RCode from the flag
-    if (rCode != 0) {
-        printf("  failed with Rcode = %d\n", rCode);
-            return 0;
+    if (!displayPacketError(packetError)) {
+        return 0;
     }
 
     printf("  succeeded with Rcode = %d\n", rCode);
-
-    printf("  ------------ [questions] ----------\n");
-    for (struct Question q: questions) {
-        printf("       %s type %d class %d\n", q.name.c_str(), q.header.qType, q.header.qClass);
+    if (rFixedDNSheader->questions) {
+        printf("  ------------ [questions] ----------\n");
+        for (struct Question q : questions) {
+            printf("       %s type %d class %d\n", q.name.c_str(), q.header.qType, q.header.qClass);
+        }
     }
     
     int i = 0;
@@ -203,26 +206,7 @@ int main(int argc, char* argv[])
         printf("  ------------ [answers] ------------\n");
         for (; i < rFixedDNSheader->answers && i < answers.size(); i++) {
             struct Answer& a = answers[i];
-            switch (a.header.type) {
-                case(DNS_A): {
-                    int ipv4 = a.rData.get()[0] << 24 | a.rData.get()[1] << 16 | a.rData.get()[2] << 8 | a.rData.get()[3];
-                    printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), DNSipv4ToString(ipv4).c_str(), a.header.ttl);
-                    break;
-                }
-                case(DNS_CNAME): {
-                    //ParseResult result = parseAnswerHelper(0, a.header.len, 0, a.rData.get());
-                    printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
-                    break;
-                }
-                case(DNS_PTR): {
-                    printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
-                    break;
-                }
-                case(DNS_NS): {
-                    printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
-                    break;
-                }
-            }
+            displayAnswer(a);
         }
     }
 
@@ -230,26 +214,7 @@ int main(int argc, char* argv[])
         printf("  ------------ [authority] ------------\n");
         for (; i - rFixedDNSheader->answers < rFixedDNSheader->authority && i < answers.size(); i++) {
             struct Answer& a = answers[i];
-            switch (a.header.type) {
-                case(DNS_A): {
-                    int ipv4 = a.rData.get()[0] << 24 | a.rData.get()[1] << 16 | a.rData.get()[2] << 8 | a.rData.get()[3];
-                    printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), DNSipv4ToString(ipv4).c_str(), a.header.ttl);
-                    break;
-                }
-                case(DNS_CNAME): {
-                    //ParseResult result = parseAnswerHelper(0, a.header.len, 0, a.rData.get());
-                    printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
-                    break;
-                }
-                case(DNS_PTR): {
-                    printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
-                    break;
-                }
-                case(DNS_NS): {
-                    printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
-                    break;
-                }
-            }
+            displayAnswer(a);
         }
     }
 
@@ -257,25 +222,7 @@ int main(int argc, char* argv[])
         printf("  ------------ [additional] ------------\n");
         for (; i - (rFixedDNSheader->answers + rFixedDNSheader->authority) < rFixedDNSheader->additional && i < answers.size(); i++) {
             struct Answer& a = answers[i];
-            switch (a.header.type) {
-                case(DNS_A): {
-                    int ipv4 = a.rData.get()[0] << 24 | a.rData.get()[1] << 16 | a.rData.get()[2] << 8 | a.rData.get()[3];
-                    printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), DNSipv4ToString(ipv4).c_str(), a.header.ttl);
-                    break;
-                }
-                case(DNS_CNAME): {
-                    printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
-                    break;
-                }
-                case(DNS_PTR): {
-                    printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
-                    break;
-                }
-                case(DNS_NS): {
-                    printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
-                    break;
-                }
-            }
+            displayAnswer(a);
         }
     }
 

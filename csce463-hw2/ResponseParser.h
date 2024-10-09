@@ -30,6 +30,7 @@ all answers will have the following fields
 then after those fields we will have our answer
 
 */
+void displayAnswer(Answer& a);
 bool displayPacketError(PacketErrors error);
 std::string DNSipv4ToString(int ipv4);
 std::string DNStypeToString(USHORT type);

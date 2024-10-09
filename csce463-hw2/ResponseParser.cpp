@@ -6,6 +6,28 @@
 
 typedef std::tuple<std::string, PacketErrors, int> ParseResult;
 
+void displayAnswer(Answer& a) {
+    switch (a.header.type) {
+        case(DNS_A): {
+            int ipv4 = a.rData.get()[0] << 24 | a.rData.get()[1] << 16 | a.rData.get()[2] << 8 | a.rData.get()[3];
+            printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), DNSipv4ToString(ipv4).c_str(), a.header.ttl);
+            break;
+        }
+        case(DNS_CNAME): {
+            printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
+            break;
+        }
+        case(DNS_PTR): {
+            printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
+            break;
+        }
+        case(DNS_NS): {
+            printf("       %s %s %s TTL = %d\n", a.name.c_str(), DNStypeToString(a.header.type).c_str(), a.rData.get(), a.header.ttl);
+            break;
+        }
+    }
+}
+
 bool displayPacketError(PacketErrors error) {
     switch (error) {
         case INVALID_REPLY_SMALLER:
@@ -84,7 +106,7 @@ bool isCorruptPacket(char* packet, struct FixedDNSheader& oFixedHeader, char * o
 }
 
 ParseResult parseAnswerHelper(int curPos, int packetSize, int depth, unsigned char *packet) {
-    if (depth >= 500) {
+    if (depth >= 512) {
         return { "", PacketErrors::INVALID_RECORD_JUMP_LOOP, curPos };
     }
     // we have reached the end of a word
@@ -118,17 +140,10 @@ ParseResult parseAnswerHelper(int curPos, int packetSize, int depth, unsigned ch
             if (std::get<1>(result) != PacketErrors::OK) {
                 return result; // propagate the error up the call stack
             }
+
             // append the jumped domain name found to result
-            if (std::get<0>(result).length()) {
-                if (std::get<0>(jumpResult).length()) {
-                    std::string nameSoFar = std::get<0>(result);
-                    if (nameSoFar[nameSoFar.length() - 1] == '.') {
-                        std::get<0>(result) += std::get<0>(jumpResult);
-                    }
-                    else {
-                        std::get<0>(result) += "." + std::get<0>(jumpResult);
-                    }
-                }
+            if (std::get<0>(result).length() && std::get<0>(jumpResult).length()) {
+                std::get<0>(result) += "." + std::get<0>(jumpResult);
             }
             else {
                 std::get<0>(result) += std::get<0>(jumpResult);
@@ -146,13 +161,14 @@ ParseResult parseAnswerHelper(int curPos, int packetSize, int depth, unsigned ch
             return result;
         }
         else {
+            std::string newDomain = std::get<0>(result).length() ? "." : "";
             for (size_t i = 0; i < size; i++) {
                 if (curPos + i >= packetSize || packet[curPos + i] == 0) {
                     return { "", PacketErrors::INVALID_RECORD_TRUNC_NAME, curPos };
                 }
-                std::get<0>(result) += packet[curPos + i];
+                newDomain += packet[curPos + i];
             }
-            std::get<0>(result) += ".";
+            std::get<0>(result) += newDomain;
             curPos += size;
         }
        
@@ -181,6 +197,7 @@ PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& a
 
         struct Question question;
         question.name = std::get<0>(result);
+       
         question.header.qClass = ntohs(qHeader->qClass);
         question.header.qType= ntohs(qHeader->qType);
 
@@ -220,6 +237,7 @@ PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& a
         }
 
         answer.name = std::get<0>(result);
+
         memcpy(&answer.header, aHeader, sizeof(struct DNSanswerHdr));
         
         // parse the record rData from the packet
@@ -260,10 +278,8 @@ PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& a
         answerStart += sizeof(struct DNSanswerHdr) + aHeader->len;
         ansCnt++;
     }
-
    
-    
-    if (ansCnt < ntohs(rFixedDNSheader->answers) + ntohs(rFixedDNSheader->additional) + ntohs(rFixedDNSheader->authority)) {
+    if (ansCnt != ntohs(rFixedDNSheader->answers) + ntohs(rFixedDNSheader->additional) + ntohs(rFixedDNSheader->authority)) {
         return PacketErrors::INVALID_SECTION;
     }
 
