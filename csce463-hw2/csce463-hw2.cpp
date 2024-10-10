@@ -17,6 +17,7 @@ Notes: random4.irl produces:
 4. stretches beyond
 5. truncated RR answer header 
 */
+#include <random>
 #include "pch.h"
 #include "ResponseParser.h"
 #include <iostream>
@@ -55,7 +56,14 @@ int main(int argc, char* argv[])
     std::string host = argv[1];//"www.iloveu.com";
     std::string originalHost = host;
     USHORT flags = htons(DNS_QUERY | DNS_RD | DNS_STDQUERY);
-    int sentId = 4;
+
+    std::random_device rd;  
+    std::mt19937 eng(rd()); 
+
+    
+    std::uniform_int_distribution<> distr(1, 10000); 
+
+    int sentId = distr(eng);
     struct FixedDNSheader fDnsHeader {htons(sentId), flags, htons(1), htons(0), htons(0), htons(0)};
 
     // reverse the bytes and append in-addr.arpa for ptr query
@@ -139,6 +147,11 @@ int main(int argc, char* argv[])
             }
             printf("response in %.0f ms with %d bytes\n", ((double)clock() - (double)start) / CLOCKS_PER_SEC * 1000.0, respPacketSize);
 
+            if (respPacketSize < sizeof(struct FixedDNSheader)) {
+                std::cout << "  ++ invalid reply: packet smaller than fixed DNS header" << std::endl;
+                return 0;
+            }
+
             packetError = parseAnswers(respPacket, strlen(question.get()) + 1, answers, questions, respPacketSize);
             break;
         }
@@ -157,8 +170,6 @@ int main(int argc, char* argv[])
     if (attempts > MAX_ATTEMPTS) {
         return 0;
     }
-
-    
 
     //Show information on only CNAME, A, NS, and PTR record...
     struct FixedDNSheader* rFixedDNSheader = reinterpret_cast<FixedDNSheader*>(respPacket);
