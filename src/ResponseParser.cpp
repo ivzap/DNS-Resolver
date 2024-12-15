@@ -6,6 +6,9 @@
 
 typedef std::tuple<std::string, PacketErrors, int> ParseResult;
 
+/*
+    Given a answers, prints out the contents of the dns answer.
+*/
 void displayAnswer(Answer& a) {
     switch (a.header.type) {
         case(DNS_A): {
@@ -27,6 +30,7 @@ void displayAnswer(Answer& a) {
         }
     }
 }
+
 
 bool displayPacketError(PacketErrors error) {
     switch (error) {
@@ -62,6 +66,9 @@ bool displayPacketError(PacketErrors error) {
     }
 }
 
+/*
+    Converts little endean int based ipv4 address to a string
+*/
 std::string DNSipv4ToString(int ipv4) {
     std::string ipv4Str = std::to_string(ipv4 >> 24 & 0xFF) 
         + "." + std::to_string(ipv4 >> 16 & 0xFF)
@@ -85,19 +92,21 @@ std::string DNStypeToString(USHORT type) {
     }
 }
 
-// returns true if response packet is corrupt
+/*
+    Determines if a packet has been corrupt.
+*/
 bool isCorruptPacket(char* packet, struct FixedDNSheader& oFixedHeader, char * oQuestion, struct QueryHeader& oQueryHeader) {
     struct FixedDNSheader* rFixedHeader = reinterpret_cast<FixedDNSheader*>(packet);
     struct QueryHeader rQueryHeader { 0, 0 };
-    // pointer to the start of the question
+    
     char* rQuestionPtr = packet + sizeof(struct FixedDNSheader);
-    // pointer to the query header
+    
     char* rQueryHeaderPtr = rQuestionPtr + strlen(oQuestion) + 1;
-    // pointer to the start of the answer(s) 
+    
     char* answerPtr = rQuestionPtr + sizeof(struct QueryHeader);
+
     memcpy(&rQueryHeader, rQueryHeaderPtr, sizeof(struct QueryHeader));
     
-    // verify the TXID
     if (oFixedHeader.ID != rFixedHeader->ID) {
         return true;
     }
@@ -105,6 +114,9 @@ bool isCorruptPacket(char* packet, struct FixedDNSheader& oFixedHeader, char * o
     return false;
 }
 
+/*
+    Helper for the dns answer parser to properly parse compressed answers and general answers.
+*/
 ParseResult parseAnswerHelper(int curPos, int packetSize, int depth, unsigned char *packet) {
     if (depth >= 512) {
         return { "", PacketErrors::INVALID_RECORD_JUMP_LOOP, curPos };
@@ -177,7 +189,9 @@ ParseResult parseAnswerHelper(int curPos, int packetSize, int depth, unsigned ch
     return result;
 
 }
-
+/*
+    Parses dns answers from a packet and returns a status code.
+*/
 PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& answers, std::vector<struct Question>& questions, int recvBytes) {
     if (recvBytes < sizeof(struct FixedDNSheader)) {
         return PacketErrors::INVALID_REPLY_SMALLER;
@@ -208,7 +222,6 @@ PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& a
 
     int ansCnt = 0;
     // case 1: compressed, pattern: [1 byte][1 bytes]
-    //int answerStart = sizeof(struct FixedDNSheader) + qSize + sizeof(struct QueryHeader);
     while (answerStart < recvBytes) {
         ParseResult result = parseAnswerHelper(answerStart, recvBytes, 0, (unsigned char*)packet);
 
@@ -221,7 +234,6 @@ PacketErrors parseAnswers(char* packet, int qSize, std::vector<struct Answer>& a
 
         if (answerStart + sizeof(DNSanswerHdr) > recvBytes) {
             return PacketErrors::INVALID_RECORD_TRUNC_RR;
-            // hostname.com0123456789
         }
 
         struct Answer answer;

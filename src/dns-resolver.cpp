@@ -1,5 +1,4 @@
 // dns-resolver.cpp : This file contains the 'main' function. Program execution begins and ends there.
-//
 
 /*
 * random0: jump into fixed dns header
@@ -35,7 +34,7 @@ int main(int argc, char* argv[])
     int result = WSAStartup(MAKEWORD(2, 2), &wsaStatus);
 
     SOCKET sock = socket(AF_INET, SOCK_DGRAM, 0);
-    // handle errors
+    
     struct sockaddr_in local;
     memset(&local, 0, sizeof(local));
     local.sin_family = AF_INET;
@@ -53,7 +52,7 @@ int main(int argc, char* argv[])
     remote.sin_port = htons(53); // DNS port on server
 
     int ipv4 = inet_addr(argv[1]);
-    std::string host = argv[1];//"www.iloveu.com";
+    std::string host = argv[1];
     std::string originalHost = host;
     USHORT flags = htons(DNS_QUERY | DNS_RD | DNS_STDQUERY);
 
@@ -134,8 +133,8 @@ int main(int argc, char* argv[])
 
         // get ready to receive
         fd_set fd;
-        FD_ZERO(&fd); // clear the set
-        FD_SET(sock, &fd); // add your socket to the set
+        FD_ZERO(&fd);
+        FD_SET(sock, &fd);
         int available = select(0, &fd, NULL, NULL, &timeout);
         if (available > 0)
         {
@@ -164,7 +163,6 @@ int main(int argc, char* argv[])
             printf("socket error %d\n", WSAGetLastError());
             return 0;
         }
-        // error checking here
     }
 
     if (attempts > MAX_ATTEMPTS) {
